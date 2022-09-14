@@ -1,4 +1,4 @@
-from elasticsearch import Elasticsearch
+from elasticsearch7 import Elasticsearch
 import copy
 
 class ElasticsearchWrapper:
@@ -18,7 +18,7 @@ class ElasticsearchWrapper:
         index : str
             インデックスの名前
         '''
-        self.es=Elasticsearch("localhost:9200")
+        self.es=Elasticsearch("http://localhost:9200")
         self.doc_type=doc_type
         self.index=index
     
@@ -46,7 +46,7 @@ class ElasticsearchWrapper:
         self.es.indices.create(index=self.index, body=setting)
         
         # 作成したインデックスのマッピングを指定
-        self.es.indices.put_mapping(index=self.index, doc_type=self.doc_type, body=mapping)
+        self.es.indices.put_mapping(index=self.index, body=mapping[self.doc_type])
 
     def insert_one(self, doc:dict):
         '''
@@ -57,7 +57,9 @@ class ElasticsearchWrapper:
         doc : dict
             登録するJSONデータ
         '''
-        self.es.index(index=self.index, doc_type=self.doc_type, body=doc)
+        # self.es.index(index=self.index, doc_type=self.doc_type, body=doc)
+        doc_num = self.es.count(index=self.index)['count']
+        self.es.create(index=self.index, id=doc_num+1, body=doc)
         # id で連番を振っておくと、idでgetできるようになる
         # id を指定しないと、内部で任意のユニークな文字列が割り当てられる
         # ここでは、登録順の番号での取得はしないし、検索にはdoc内の項目を用いるので
@@ -74,7 +76,7 @@ class ElasticsearchWrapper:
             登録するJSONデータの配列
         '''
         for doc in docs:
-            self.es.index(index=self.index, doc_type=self.doc_type, body=doc)
+            self.es.index(index=self.index, body=doc)
 
     def search_and(self, items:dict, count:int = 10):
         '''
@@ -87,13 +89,26 @@ class ElasticsearchWrapper:
         count : int
             検索結果の上限数、無指定の場合の初期値10
         '''
+        
         query = {
             "query": {
-                "bool" : {
-                    "must":[{"match":{key : val}} for key, val in items.items()]
+                "bool":{
+                    "must":[
+                        {"match":{key : val}} for key, val in items.items() 
+                    ]
                 }
             }
         }
+        # query = {
+        #     "query": {
+        #         "match_all": {
+                    
+        #         }
+        #     }
+        # }
+        
+        
+    
 
         return self.__search(query, count)
 
@@ -112,7 +127,7 @@ class ElasticsearchWrapper:
         params = {
             'size':count
         }
-        for i in self.es.search(index=self.index, doc_type=self.doc_type, body=query, params=params)["hits"]["hits"]:
+        for i in self.es.search(index=self.index, body=query, size=count)["hits"]["hits"]:
             body = copy.deepcopy(i["_source"])
             score = i['_score']
             result = {'body':body, 'score':score}
